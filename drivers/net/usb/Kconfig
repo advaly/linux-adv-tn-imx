@@ -644,4 +644,10 @@ config USB_RTL8153_ECM
 	  CONFIG_USB_RTL8152 is not set, or the RTL8153 device is not
 	  supported by r8152 driver.
 
+config USB_NET_SIMCOM
+	tristate "SIMCom USB modem modules support"
+	depends on USB_USBNET
+	help
+	  Choose this option if you're using SIMCom USB modem modules.
+
 endif # USB_NET_DRIVERS
