@@ -92,6 +92,7 @@ dtb-$(CONFIG_ARCH_MXC) += imx8mn-evk.dtb imx8mn-evk-rm67191.dtb imx8mn-evk-rpmsg
 dtb-$(CONFIG_ARCH_MXC) += imx8mm-ab2.dtb imx8mm-ab2-m4.dtb imx8mm-ddr4-ab2.dtb imx8mm-ddr4-ab2-m4.dtb \
 			  imx8mm-ddr4-ab2-revb.dtb imx8mm-ddr4-ab2-m4-revb.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8mm-pico-pi.dtb imx8mm-pico-pi-ili9881c.dtb imx8mm-pico-pi-voicehat.dtb
+dtb-$(CONFIG_ARCH_MXC) += imx8mm-pico-nslockcam.dtb
 dtb-$(CONFIG_ARCH_MXC) += imx8mm-pico-wizard.dtb imx8mm-pico-wizard-ili9881c.dtb imx8mm-pico-wizard-g080uan01.dtb \
 			  imx8mm-pico-wizard-g101uan02.dtb imx8mm-pico-wizard-mipi2hdmi-adv7535.dtb imx8mm-pico-wizard-sn65dsi84-vl10112880.dtb \
 			  imx8mm-pico-wizard-sn65dsi84-vl15613676.dtb imx8mm-pico-wizard-sn65dsi84-vl215192108.dtb \
@@ -271,6 +272,7 @@ DTC_FLAGS_imx8mn-edm-g-wizard := -@
 DTC_FLAGS_imx8mp-edm-g-wizard := -@
 DTC_FLAGS_imx8mq-edm-wizard := -@
 DTC_FLAGS_imx8mm-pico-pi := -@
+DTC_FLAGS_imx8mm-pico-nslockcam := -@
 DTC_FLAGS_imx8mq-pico-pi := -@
 DTC_FLAGS_imx8mm-pico-wizard := -@
 DTC_FLAGS_imx8mq-pico-wizard := -@

@@ -1,0 +1,160 @@
+/* SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+ *
+ * Copyright 2023 ADVALY SYSTEM Inc.
+ *
+ */
+
+/dts-v1/;
+
+#include "imx8mm-pico.dtsi"
+
+/ {
+	model = "ADVALY SYSTEM NSLOCKCAM 4B";
+	compatible = "fsl,imx8mm-pico", "fsl,imx8mm";
+
+	regulators {
+		compatible = "simple-bus";
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+
+	leds {
+		compatible = "gpio-leds";
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_gpio_led>;
+
+		led1 {
+			label = "led1";
+			gpios = <&gpio1 4 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+
+		led2 {
+			label = "led2";
+			gpios = <&gpio1 6 GPIO_ACTIVE_HIGH>;
+			default-state = "off";
+		};
+	};
+};
+
+&iomuxc {
+	pinctrl_csi_rst: csi_rst_grp {
+		fsl,pins = <
+			MX8MM_IOMUXC_SAI3_RXC_GPIO4_IO29		0x19
+			MX8MM_IOMUXC_GPIO1_IO05_GPIO1_IO5		0x19
+			MX8MM_IOMUXC_I2C4_SCL_GPIO5_IO20		0x19
+			MX8MM_IOMUXC_I2C4_SDA_GPIO5_IO21		0x19
+			MX8MM_IOMUXC_GPIO1_IO14_CCMSRCGPCMIX_CLKO1	0x59
+		>;
+	};
+	pinctrl_gpio_led: gpioledgrp {
+		fsl,pins = <
+			MX8MM_IOMUXC_GPIO1_IO04_GPIO1_IO4	0x19
+			MX8MM_IOMUXC_GPIO1_IO06_GPIO1_IO6	0x19
+		>;
+	};
+};
+
+&i2c2 {
+	clock-frequency = <400000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c2>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	tevi_ap1302_otp_0: eeprom@54 {
+		compatible = "atmel,24c1024";
+		reg = <0x54>;
+		pagesize = <256>;
+		status = "okay";
+	};
+
+	tevi_ap1302_0: tevi_ap1302@3d {
+		compatible = "tn,tevi-ap1302";
+		reg = <0x3d>;
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&pinctrl_csi_rst>;
+
+		host-power-gpios = <&gpio4 29 GPIO_ACTIVE_HIGH>;
+		reset-gpios = <&gpio1 5 GPIO_ACTIVE_HIGH>;
+		device-power-gpios = <&gpio5 21 GPIO_ACTIVE_HIGH>;
+		standby-gpios = <&gpio5 20 GPIO_ACTIVE_HIGH>;
+
+		nvmem = <&tevi_ap1302_otp_0>;
+		nvmem-names = "calib-data";
+		data-lanes = <2>;
+		continuous-clock = <0>;
+
+		status = "okay";
+
+		port {
+			tevi_ap1302_0_ep: endpoint {
+				remote-endpoint = <&mipi_csi0_ep>;
+			};
+		};
+	};
+};
+
+&i2c3 {
+	clock-frequency = <100000>;
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_i2c3>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	ti_lm73_0: ti_lm73@48 {
+		compatible = "ti,lm73";
+		reg = <0x48>;
+		status = "okay";
+	};
+};
+
+&csi1_bridge {
+	fsl,mipi-mode;
+	status = "okay";
+
+	port {
+		csi1_ep: endpoint {
+			remote-endpoint = <&mipi_csi1_ep>;
+		};
+	};
+};
+
+&mipi_csi_1 {
+	#address-cells = <1>;
+	#size-cells = <0>;
+	status = "okay";
+
+	port {
+		mipi_csi0_ep: endpoint@1 {
+			remote-endpoint = <&tevi_ap1302_0_ep>;
+			data-lanes = <2>;
+			csis-hs-settle = <19>;
+			csis-clk-settle = <2>;
+			csis-wclk;
+		};
+
+		mipi_csi1_ep: endpoint@2 {
+			remote-endpoint = <&csi1_ep>;
+		};
+	};
+};
+
+&usbotg1 {
+	/* Hub, FTDI and SIM7500 LTE module */
+	dr_mode = "host";
+	status = "okay";
+};
+
+&usbotg2 {
+	/* Mic */
+	dr_mode = "host";
+	status = "okay";
+};
+
+&usdhc2 {
+	status = "okay";
+};
