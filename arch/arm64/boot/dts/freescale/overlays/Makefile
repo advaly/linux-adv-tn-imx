@@ -6,18 +6,18 @@ dtbo-$(CONFIG_ARCH_MXC) += imx8mm-edm-g-wizard-sn65dsi84-vl10112880.dtbo imx8mm-
 			   imx8mm-edm-g-wizard-tevi-ov5640.dtbo imx8mm-edm-g-wizard-hdmi2mipi-tc358743.dtbo imx8mm-edm-g-wizard-tevi-ap1302.dtbo imx8mm-edm-g-wizard-vizionlink-tevi-ap1302.dtbo
 dtbo-$(CONFIG_ARCH_MXC) += imx8mm-pico-pi-ili9881c.dtbo imx8mm-pico-pi-voicehat.dtbo \
 			   imx8mm-pico-pi-clixnfc.dtbo imx8mm-pico-pi-tevi-ov5640.dtbo imx8mm-pico-pi-ov5645.dtbo imx8mm-pico-pi-ov7251.dtbo \
-			   imx8mm-pico-pi-tevi-ap1302.dtbo
+			   imx8mm-pico-pi-tevi-ap1302.dtbo imx8mm-pico-pi-tevs.dtbo
 dtbo-$(CONFIG_ARCH_MXC) += imx8mm-pico-wizard-ili9881c.dtbo imx8mm-pico-wizard-voicehat.dtbo imx8mm-pico-wizard-mipi2hdmi-adv7535.dtbo \
 			   imx8mm-pico-wizard-g080uan01.dtbo imx8mm-pico-wizard-g101uan02.dtbo \
 			   imx8mm-pico-wizard-clix1nfc.dtbo imx8mm-pico-wizard-clix2nfc.dtbo \
 			   imx8mm-pico-wizard-sn65dsi84-vl10112880.dtbo imx8mm-pico-wizard-sn65dsi84-vl15613676.dtbo imx8mm-pico-wizard-sn65dsi84-vl215192108.dtbo \
 			   imx8mm-pico-wizard-tevi-ov5640.dtbo imx8mm-pico-wizard-ov5645.dtbo imx8mm-pico-wizard-ov7251.dtbo
 dtbo-$(CONFIG_ARCH_MXC) += imx8mp-edm-g-wb-lvds-vl10112880.dtbo imx8mp-edm-g-wb-lvds-vl15613676.dtbo imx8mp-edm-g-wb-lvds-vl156192108.dtbo \
-				imx8mp-edm-g-wb-lvds-vl215192108.dtbo imx8mp-edm-g-wb-tevi-ov5640.dtbo imx8mp-edm-g-wb-tevi-ap1302.dtbo
+				imx8mp-edm-g-wb-lvds-vl215192108.dtbo imx8mp-edm-g-wb-tevi-ov5640.dtbo imx8mp-edm-g-wb-tevi-ap1302.dtbo imx8mp-edm-g-wb-tevs.dtbo
 dtbo-$(CONFIG_ARCH_MXC) += imx8mp-edm-g-wb-hdmi2mipi-tc358743-dual.dtbo imx8mp-edm-g-wb-hdmi2mipi-tc358743-single-cam1.dtbo
 dtbo-$(CONFIG_ARCH_MXC) += imx8mp-edm-g-wb-hdmi2mipi-tc358743-csi0.dtbo imx8mp-edm-g-wb-hdmi2mipi-tc358743-csi1.dtbo
 dtbo-$(CONFIG_ARCH_MXC) += imx8mp-edm-g-wb-vizionlink-tevi-ov5640-dual.dtbo imx8mp-edm-g-wb-vizionlink-tevi-ov5640-csi0.dtbo imx8mp-edm-g-wb-vizionlink-tevi-ov5640-csi1.dtbo  imx8mp-edm-g-wb-vizionlink-tevi-ov5640.dtbo
-dtbo-$(CONFIG_ARCH_MXC) += imx8mp-edm-g-wb-vizionlink-tevi-ap1302.dtbo
+dtbo-$(CONFIG_ARCH_MXC) += imx8mp-edm-g-wb-vizionlink-tevi-ap1302.dtbo imx8mp-edm-g-wb-vls.dtbo
 dtbo-$(CONFIG_ARCH_MXC) += imx8mp-edm-g-wizard-mipi2hdmi-adv7535.dtbo imx8mp-edm-g-wizard-lvds-vl10112880.dtbo imx8mp-edm-g-wizard-lvds-vl15613676.dtbo imx8mp-edm-g-wizard-lvds-vl156192108.dtbo \
                                 imx8mp-edm-g-wizard-lvds-vl215192108.dtbo imx8mp-edm-g-wizard-tevi-ov5640.dtbo imx8mp-edm-g-wizard-tevi-ap1302.dtbo
 dtbo-$(CONFIG_ARCH_MXC) += imx8mp-edm-g-wizard-vizionlink-tevi-ov5640-dual.dtbo imx8mp-edm-g-wizard-vizionlink-tevi-ov5640-csi0.dtbo imx8mp-edm-g-wizard-vizionlink-tevi-ov5640-csi1.dtbo  imx8mp-edm-g-wizard-vizionlink-tevi-ov5640.dtbo
@@ -27,7 +27,7 @@ dtbo-$(CONFIG_ARCH_MXC) += imx8mp-edm-g-wizard-hdmi2mipi-tc358743-csi0.dtbo imx8
 dtbo-$(CONFIG_ARCH_MXC) += imx8mp-edm-g-wizard-ili9881c.dtbo imx8mp-edm-g-wizard-g101uan02.dtbo \
 				imx8mp-edm-g-wizard-vizionpanel-vl10112880.dtbo imx8mp-edm-g-wizard-vizionpanel-vl15010276.dtbo imx8mp-edm-g-wizard-vizionpanel-vl215192108.dtbo
 dtbo-$(CONFIG_ARCH_MXC) += imx8mp-tek3-hdmi2mipi-tc358743.dtbo imx8mp-tek3-vizionlink-tevi-ov5640.dtbo imx8mp-tek3-vizionlink-tevi-ap1302.dtbo
-dtbo-$(CONFIG_ARCH_MXC) += imx8mp-hmi-lvds-vl10112880.dtbo imx8mp-hmi-lvds-vl156192108.dtbo imx8mp-hmi-lvds-vl215192108.dtbo
+dtbo-$(CONFIG_ARCH_MXC) += imx8mp-hmi-lvds-vl10112880.dtbo imx8mp-hmi-lvds-vl15010276.dtbo imx8mp-hmi-lvds-vl156192108.dtbo imx8mp-hmi-lvds-vl215192108.dtbo
 dtbo-$(CONFIG_ARCH_MXC) += imx8mp-hmi-vizionlink-tevi-ov5640.dtbo imx8mp-hmi-vizionlink-tevi-ap1302.dtbo imx8mp-hmi-hdmi2mipi-tc358743.dtbo
 dtbo-$(CONFIG_ARCH_MXC) += imx8mp-hmi-vizionpanel-vl10112880.dtbo imx8mp-hmi-vizionpanel-vl15010276.dtbo imx8mp-hmi-vizionpanel-vl215192108.dtbo
 dtbo-$(CONFIG_ARCH_MXC) += imx8mq-edm-wizard-mipi2hdmi-adv7535.dtbo imx8mq-edm-wizard-ili9881c.dtbo \

@@ -3,14 +3,106 @@
 #include <linux/kthread.h>
 #include <linux/i2c.h>
 #include <linux/init.h>
+#include <linux/kernel.h>
+#include <linux/media.h>
+#include <linux/mutex.h>
+#include <linux/regmap.h>
+#include <linux/regulator/consumer.h>
 #include <media/v4l2-async.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-event.h>
 #include <media/v4l2-fwnode.h>
 #include <media/v4l2-subdev.h>
+#include <media/media-entity.h>
 #include "sensor_tbls.h"
 #include "otp_flash.h"
+
+#define DRIVER_NAME "tevi-ap1302"
+
+#define AP1302_BRIGHTNESS						(0x7000)
+#define AP1302_BRIGHTNESS_MASK					(0xFFFF)
+#define AP1302_CONTRAST							(0x7002)
+#define AP1302_CONTRAST_MASK					(0xFFFF)
+#define AP1302_SATURATION						(0x7006)
+#define AP1302_SATURATION_MASK					(0xFFFF)
+#define AP1302_AWB_CTRL_MODE					(0x5100)
+#define AP1302_AWB_CTRL_MODE_MASK				(0x00FF)
+#define AP1302_AWB_CTRL_MODE_MANUAL_TEMP 		(7U << 0)
+#define AP1302_AWB_CTRL_MODE_AUTO				(15U << 0)
+#define AP1302_AWB_CTRL_MODE_MANUAL_TEMP_IDX 	(0U << 0)
+#define AP1302_AWB_CTRL_MODE_AUTO_IDX			(1U << 0)
+#define AP1302_GAMMA							(0x700A)
+#define AP1302_GAMMA_MASK						(0xFFFF)
+#define AP1302_AE_MANUAL_EXP_TIME				(0x500C)
+#define AP1302_AE_MANUAL_EXP_TIME_MASK			(0xFFFFFFFF)
+#define AP1302_AE_MANUAL_GAIN					(0x5006)
+#define AP1302_AE_MANUAL_GAIN_MASK				(0xFFFF)
+#define AP1302_ORIENTATION						(0x100C)
+#define AP1302_ORIENTATION_HFLIP				(1U << 0)
+#define AP1302_ORIENTATION_VFLIP				(1U << 1)
+#define AP1302_AWB_MANUAL_TEMP					(0x510A)
+#define AP1302_AWB_MANUAL_TEMP_MASK				(0xFFFF)
+#define AP1302_SHARPEN							(0x7010)
+#define AP1302_SHARPEN_MASK						(0xFFFF)
+#define AP1302_BACKLIGHT_COMPENSATION 			(0x501A)
+#define AP1302_BACKLIGHT_COMPENSATION_MASK		(0xFFFF)
+#define AP1302_DZ_TGT_FCT						(0x1010)
+#define AP1302_DZ_TGT_FCT_MASK					(0xFFFF)
+#define AP1302_SFX_MODE							(0x1016)
+#define AP1302_SFX_MODE_SFX_MASK				(0x00FF)
+#define AP1302_SFX_MODE_SFX_NORMAL				(0U << 0)
+#define AP1302_SFX_MODE_SFX_BW					(3U << 0)
+#define AP1302_SFX_MODE_SFX_GRAYSCALE			(6U << 0)
+#define AP1302_SFX_MODE_SFX_NEGATIVE			(7U << 0)
+#define AP1302_SFX_MODE_SFX_SKETCH				(15U << 0)
+#define AP1302_SFX_MODE_SFX_NORMAL_IDX			(0U << 0)
+#define AP1302_SFX_MODE_SFX_BW_IDX				(1U << 0)
+#define AP1302_SFX_MODE_SFX_GRAYSCALE_IDX		(2U << 0)
+#define AP1302_SFX_MODE_SFX_NEGATIVE_IDX		(3U << 0)
+#define AP1302_SFX_MODE_SFX_SKETCH_IDX			(4U << 0)
+#define AP1302_AE_CTRL_MODE						(0x5002)
+#define AP1302_AE_CTRL_MODE_MASK				(0x00FF)
+#define AP1302_AE_CTRL_MANUAL_EXP_TIME_GAIN		(0U << 0)
+#define AP1302_AE_CTRL_FULL_AUTO				(12U << 0)
+#define AP1302_AE_CTRL_MANUAL_EXP_TIME_GAIN_IDX	(0U << 0)
+#define AP1302_AE_CTRL_FULL_AUTO_IDX			(1U << 0)
+#define AP1302_DZ_CT_X							(0x118C)
+#define AP1302_DZ_CT_X_MASK						(0xFFFF)
+#define AP1302_DZ_CT_Y							(0x118E)
+#define AP1302_DZ_CT_Y_MASK						(0xFFFF)
+#define AP1302_FLICK_CTRL                       (0x5440)
+#define AP1302_FLICK_CTRL_FREQ(n)				((n) << 8)
+#define AP1302_FLICK_CTRL_ETC_IHDR_UP			BIT(6)
+#define AP1302_FLICK_CTRL_ETC_DIS				BIT(5)
+#define AP1302_FLICK_CTRL_FRC_OVERRIDE_MAX_ET	BIT(4)
+#define AP1302_FLICK_CTRL_FRC_OVERRIDE_UPPER_ET	BIT(3)
+#define AP1302_FLICK_CTRL_FRC_EN				BIT(2)
+#define AP1302_FLICK_CTRL_MODE_MASK				(0x03)
+#define AP1302_FLICK_CTRL_ETC_IHDR_UP			BIT(6)
+#define AP1302_FLICK_CTRL_ETC_DIS				BIT(5)
+#define AP1302_FLICK_CTRL_FRC_OVERRIDE_MAX_ET	BIT(4)
+#define AP1302_FLICK_CTRL_FRC_OVERRIDE_UPPER_ET	BIT(3)
+#define AP1302_FLICK_CTRL_FRC_EN				BIT(2)
+#define AP1302_FLICK_CTRL_MODE_DISABLED         (0U << 0)
+#define AP1302_FLICK_CTRL_MODE_MANUAL           (1U << 0)
+#define AP1302_FLICK_CTRL_MODE_AUTO             (2U << 0)
+#define AP1302_FLICK_CTRL_FREQ_MASK			    (0xFF00)
+#define AP1302_FLICK_CTRL_MODE_50HZ             (AP1302_FLICK_CTRL_FREQ(50) | AP1302_FLICK_CTRL_MODE_MANUAL)
+#define AP1302_FLICK_CTRL_MODE_60HZ             (AP1302_FLICK_CTRL_FREQ(60) | AP1302_FLICK_CTRL_MODE_MANUAL)
+#define AP1302_FLICK_MODE_DISABLED_IDX			(0U << 0)
+#define AP1302_FLICK_MODE_ENABLED_IDX			(3U << 0)
+
+#define V4L2_CID_SENSOR_FLASH_ID            (V4L2_CID_USER_BASE + 44)
+// TODO This should go in v4l2-controls.h after V4L2_CID_USER_CCS_BASE
+/* The base for the AP1302 driver controls.
+ * We reserve 32 controls for this driver. */
+// #ifndef V4L2_CID_USER_CCS_BASE
+// #define V4L2_CID_USER_CCS_BASE 					(V4L2_CID_USER_BASE + 0x10f0)
+// #endif
+// #define V4L2_CID_USER_AP1302_BASE 				(V4L2_CID_USER_CCS_BASE + 128)
+
+// #define V4L2_CID_AP1302_STEREO_ORDER 			(V4L2_CID_USER_AP1302_BASE + 0)
 
 struct sensor {
 	struct v4l2_subdev v4l2_subdev;
@@ -24,8 +116,15 @@ struct sensor {
 	struct gpio_desc *standby_gpio;
 	u8 selected_mode;
 	u8 selected_sensor;
+	u8 flash_id;
 	bool supports_over_4k_res;
 	char *sensor_name;
+
+	struct mutex lock;	/* Protects formats */
+	/* V4L2 Controls */
+	struct v4l2_ctrl_handler ctrls;
+
+	// bool stereo_order;
 };
 
 static int sensor_standby(struct i2c_client *client, int enable);
@@ -90,7 +189,7 @@ static int sensor_i2c_write_16b(struct i2c_client *client, u16 reg, u16 val)
 	while((i2c_transfer(client->adapter, &msg, 1)) < 0)
 	{
 		retry_tmp++;
-		dev_err(&client->dev, "i2c transfer retry:%d.\n", retry_tmp);
+		dev_dbg(&client->dev, "i2c transfer retry:%d.\n", retry_tmp);
 		dev_dbg(&client->dev, "write 16b reg:%x val:%x.\n", reg, val);
 
 		if (retry_tmp > 50)
@@ -120,7 +219,7 @@ static int sensor_i2c_write_bust(struct i2c_client *client, u8 *buf, size_t len)
 	while((i2c_transfer(client->adapter, &msg, 1)) < 0)
 	{
 		retry_tmp++;
-		dev_err(&client->dev, "i2c transfer retry:%d.\n", retry_tmp);
+		dev_dbg(&client->dev, "i2c transfer retry:%d.\n", retry_tmp);
 		dev_dbg(&client->dev, "write bust buf:%x.\n", client->addr);
 
 		if (retry_tmp > 50)
@@ -132,6 +231,42 @@ static int sensor_i2c_write_bust(struct i2c_client *client, u8 *buf, size_t len)
 
 	return 0;
 }
+
+static int check_sensor_chip_id(struct i2c_client *client, u16* chip_id)
+{
+	int timeout;
+
+	for (timeout = 0 ; timeout < 100 ; timeout ++) {
+		usleep_range(9000, 10000);
+		sensor_i2c_read_16b(client, 0x60AC, chip_id);
+		if ((*chip_id & 0x7) == 0)
+			break;
+	}
+	if (timeout >= 100) {
+		dev_err(&client->dev, "timeout: line[%d]v=%x\n", __LINE__, *chip_id);
+		return -EINVAL;
+	}
+	sensor_i2c_write_16b(client, 0x60AA, 0x0002); // DMA_SIZE
+	sensor_i2c_write_16b(client, 0x60A0, 0x0320); // DMA_SRC_0
+	sensor_i2c_write_16b(client, 0x60A2, 0x3000); // DMA_SRC_1
+	sensor_i2c_write_16b(client, 0x60A4, 0x0000); // DMA_DST_0
+	sensor_i2c_write_16b(client, 0x60A6, 0x60A4); // DMA_DST_1
+	sensor_i2c_write_16b(client, 0x60AC, 0x0032); // DMA_CTRL
+	for (timeout = 0 ; timeout < 100 ; timeout ++) {
+		usleep_range(9000, 10000);
+		sensor_i2c_read_16b(client, 0x60AC, chip_id);
+		if ((*chip_id & 0x7) == 0)
+			break;
+	}
+	if (timeout >= 100) {
+		dev_err(&client->dev, "timeout: line[%d]v=%x\n", __LINE__, *chip_id);
+		return -EINVAL;
+	}
+	sensor_i2c_read_16b(client, 0x60A4, chip_id);
+
+	return 0;
+}
+
 
 static int ops_power(struct v4l2_subdev *sub_dev, int on)
 {
@@ -204,28 +339,38 @@ static int ops_set_stream(struct v4l2_subdev *sub_dev, int enable)
 		return -EINVAL;
 
 	if (enable == 0) {
+		/* 
+		 * This is a workaround for ISP bug. 
+		 * Before ISP standby, setting a default width and height for next streaming on.
+		 * Otherwise, some resolutions of sensor will not streaming successful.
+		 */ 
 		sensor_i2c_write_16b(instance->i2c_client, 0x1184, 1); //ATOMIC
 		//VIDEO_WIDTH
-		sensor_i2c_write_16b(instance->i2c_client, 0x2000, 1920);
+		sensor_i2c_write_16b(instance->i2c_client, 0x2000, 1280);
 		//VIDEO_HEIGHT
-		sensor_i2c_write_16b(instance->i2c_client, 0x2002, 1080);
+		sensor_i2c_write_16b(instance->i2c_client, 0x2002, 720);
 		sensor_i2c_write_16b(instance->i2c_client, 0x1184, 0xb); //ATOMIC
 		ret = sensor_standby(instance->i2c_client, 1);
 	} else {
 		ret = sensor_standby(instance->i2c_client, 0);
 		if (ret == 0) {
 			int fps = ap1302_sensor_table[instance->selected_sensor].res_list[instance->selected_mode].framerates;
-			dev_dbg(sub_dev->dev, "%s() width=%d, height=%d\n", __func__, 
-				ap1302_sensor_table[instance->selected_sensor].res_list[instance->selected_mode].width, 
-				ap1302_sensor_table[instance->selected_sensor].res_list[instance->selected_mode].height);
+			dev_dbg(sub_dev->dev, "%s() width=%d, height=%d, mode=%d\n", __func__,
+				ap1302_sensor_table[instance->selected_sensor].res_list[instance->selected_mode].width,
+				ap1302_sensor_table[instance->selected_sensor].res_list[instance->selected_mode].height,
+				ap1302_sensor_table[instance->selected_sensor].res_list[instance->selected_mode].mode);
 			sensor_i2c_write_16b(instance->i2c_client, 0x1184, 1); //ATOMIC
-			//VIDEO_WIDTH
+			//PREVIEW_SENSOR_MODE
+			sensor_i2c_write_16b(instance->i2c_client, 0x2014,
+						ap1302_sensor_table[instance->selected_sensor].res_list[instance->selected_mode].mode);
+			//PREVIEW_WIDTH
 			sensor_i2c_write_16b(instance->i2c_client, 0x2000,
 					     ap1302_sensor_table[instance->selected_sensor].res_list[instance->selected_mode].width);
-			//VIDEO_HEIGHT
+			//PREVIEW_HEIGHT
 			sensor_i2c_write_16b(instance->i2c_client, 0x2002,
 					     ap1302_sensor_table[instance->selected_sensor].res_list[instance->selected_mode].height);
-			sensor_i2c_write_16b(instance->i2c_client, 0x2020, fps << 8); //VIDEO_MAX_FPS
+			//PREVIEW_MAX_FPS
+			sensor_i2c_write_16b(instance->i2c_client, 0x2020, fps << 8);
 			sensor_i2c_write_16b(instance->i2c_client, 0x1184, 0xb); //ATOMIC
 		}
 	}
@@ -368,10 +513,904 @@ static int ops_enum_frame_interval(struct v4l2_subdev *sub_dev,
 	return 0;
 }
 
+/* -----------------------------------------------------------------------------
+ * V4L2 Controls
+ */
+
+static int ops_set_brightness(struct sensor *instance, s32 value)
+{
+	// Format is u3.12
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_BRIGHTNESS, value & AP1302_BRIGHTNESS_MASK);
+}
+
+static int ops_get_brightness(struct sensor *instance, s32 *value)
+{
+	u16 val;
+	int ret;
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_BRIGHTNESS, &val);
+	if (ret)
+		return ret;
+
+	*value = val & AP1302_BRIGHTNESS_MASK;
+	return 0;
+}
+
+static int ops_set_contrast(struct sensor *instance, s32 value)
+{
+	// Format is u3.12
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_CONTRAST, value & AP1302_CONTRAST_MASK);
+}
+
+static int ops_get_contrast(struct sensor *instance, s32 *value)
+{
+	u16 val;
+	int ret;
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_CONTRAST, &val);
+	if (ret)
+		return ret;
+
+	*value = val & AP1302_CONTRAST_MASK;
+	return 0;
+}
+
+static int ops_set_saturation(struct sensor *instance, s32 value)
+{
+	// Format is u3.12
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_SATURATION, value & AP1302_SATURATION_MASK);
+}
+
+static int ops_get_saturation(struct sensor *instance, s32 *value)
+{
+	u16 val;
+	int ret;
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_SATURATION, &val);
+	if (ret)
+		return ret;
+
+	*value = val & AP1302_SATURATION_MASK;
+	return 0;
+}
+
+static const char * const awb_mode_strings[] = {
+	"Manual Temp Mode", // AP1302_AWB_CTRL_MODE_MANUAL_TEMP
+	"Auto Mode", // AP1302_AWB_CTRL_MODE_AUTO
+	NULL,
+};
+
+static int ops_set_awb_mode(struct sensor *instance, s32 mode)
+{
+	u16 val = mode & AP1302_AWB_CTRL_MODE_MASK;
+
+	switch(val)
+	{
+	case 0:
+		val = AP1302_AWB_CTRL_MODE_MANUAL_TEMP;
+		break;
+	case 1:
+		val = AP1302_AWB_CTRL_MODE_AUTO;
+		break;
+	default:
+		val = AP1302_AWB_CTRL_MODE_AUTO;
+		break;
+	}
+
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_AWB_CTRL_MODE, val);
+}
+
+static int ops_get_awb_mode(struct sensor *instance, s32 *mode)
+{
+	u16 val;
+	int ret;
+
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_AWB_CTRL_MODE, &val);
+	if (ret)
+		return ret;
+
+	switch (val & AP1302_AWB_CTRL_MODE_MASK)
+	{
+	case AP1302_AWB_CTRL_MODE_MANUAL_TEMP:
+		*mode = 0;
+		break;
+	case AP1302_AWB_CTRL_MODE_AUTO:
+		*mode = 1;
+		break;
+	default:
+		*mode = 1;
+		break;
+	}
+
+	return 0;
+}
+
+static int ops_set_gamma(struct sensor *instance, s32 value)
+{
+	// Format is u3.12
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_GAMMA, value & AP1302_GAMMA_MASK);
+}
+
+static int ops_get_gamma(struct sensor *instance, s32 *value)
+{
+	u16 val;
+	int ret;
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_GAMMA, &val);
+	if (ret)
+		return ret;
+
+	*value = val & AP1302_GAMMA_MASK;
+	return 0;
+}
+
+static int ops_set_exposure(struct sensor *instance, s32 value)
+{
+	int ret;
+
+	ret = sensor_i2c_write_16b(instance->i2c_client, AP1302_AE_MANUAL_EXP_TIME, (value >> 16) & 0xFFFF);
+	if (ret)
+		return ret;
+	usleep_range(9000, 10000);
+	ret = sensor_i2c_write_16b(instance->i2c_client, AP1302_AE_MANUAL_EXP_TIME + 2, value & 0xFFFF);
+	if (ret)
+		return ret;
+
+	return 0;
+}
+
+static int ops_get_exposure(struct sensor *instance, s32 *value)
+{
+	u16 val_msb, val_lsb;
+	int ret;
+
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_AE_MANUAL_EXP_TIME, &val_msb);
+	if (ret)
+		return ret;
+	usleep_range(9000, 10000);
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_AE_MANUAL_EXP_TIME + 2, &val_lsb);
+	if (ret)
+		return ret;
+
+	*value = ((u32)(val_msb) << 16) + val_lsb;
+	return 0;
+}
+
+static int ops_set_gain(struct sensor *instance, s32 value)
+{
+	// Format is u8
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_AE_MANUAL_GAIN, value & AP1302_AE_MANUAL_GAIN_MASK);
+}
+
+static int ops_get_gain(struct sensor *instance, s32 *value)
+{
+	u16 val;
+	int ret;
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_AE_MANUAL_GAIN, &val);
+	if (ret)
+		return ret;
+
+	*value = val & AP1302_AE_MANUAL_GAIN_MASK;
+	return 0;
+}
+
+static int ops_set_hflip(struct sensor *instance, s32 flip)
+{
+	u16 val;
+	int ret;
+
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_ORIENTATION, &val);
+	if (ret)
+		return ret;
+
+	val &= ~AP1302_ORIENTATION_HFLIP;
+	val |= flip ? AP1302_ORIENTATION_HFLIP : 0;
+
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_ORIENTATION, val);
+}
+
+static int ops_get_hflip(struct sensor *instance, s32 *flip)
+{
+	u16 val;
+	int ret;
+
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_ORIENTATION, &val);
+	if (ret)
+		return ret;
+
+	*flip = !!(val & AP1302_ORIENTATION_HFLIP);
+	return 0;
+}
+
+static int ops_set_vflip(struct sensor *instance, s32 flip)
+{
+	u16 val;
+	int ret;
+
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_ORIENTATION, &val);
+	if (ret)
+		return ret;
+
+	val &= ~AP1302_ORIENTATION_VFLIP;
+	val |= flip ? AP1302_ORIENTATION_VFLIP : 0;
+
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_ORIENTATION, val);
+}
+
+static int ops_get_vflip(struct sensor *instance, s32 *flip)
+{
+	u16 val;
+	int ret;
+
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_ORIENTATION, &val);
+	if (ret)
+		return ret;
+
+	*flip = !!(val & AP1302_ORIENTATION_VFLIP);
+	return 0;
+}
+
+static int ops_set_awb_temp(struct sensor *instance, s32 value)
+{
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_AWB_MANUAL_TEMP, value & AP1302_AWB_MANUAL_TEMP_MASK);
+}
+
+static int ops_get_awb_temp(struct sensor *instance, s32 *value)
+{
+	u16 val;
+	int ret;
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_AWB_MANUAL_TEMP, &val);
+	if (ret)
+		return ret;
+
+	*value = val & AP1302_AWB_MANUAL_TEMP_MASK;
+	return 0;
+}
+
+static int ops_set_sharpen(struct sensor *instance, s32 value)
+{
+	// Format is u3.12
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_SHARPEN, value & AP1302_SHARPEN_MASK);
+}
+
+static int ops_get_sharpen(struct sensor *instance, s32 *value)
+{
+	u16 val;
+	int ret;
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_SHARPEN, &val);
+	if (ret)
+		return ret;
+
+	*value = val & AP1302_SHARPEN_MASK;
+	return 0;
+}
+
+static int ops_set_backlight_compensation(struct sensor *instance, s32 value)
+{
+	// Format is u3.12
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_BACKLIGHT_COMPENSATION, value & AP1302_BACKLIGHT_COMPENSATION_MASK);
+}
+
+static int ops_get_backlight_compensation(struct sensor *instance, s32 *value)
+{
+	u16 val;
+	int ret;
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_BACKLIGHT_COMPENSATION, &val);
+	if (ret)
+		return ret;
+
+	*value = val & AP1302_BACKLIGHT_COMPENSATION_MASK;
+	return 0;
+}
+
+static int ops_set_zoom_target(struct sensor *instance, s32 value)
+{
+	// Format u7.8
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_DZ_TGT_FCT, value & AP1302_DZ_TGT_FCT_MASK);
+}
+
+static int ops_get_zoom_target(struct sensor *instance, s32 *value)
+{
+	u16 val;
+	int ret;
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_DZ_TGT_FCT, &val);
+	if (ret)
+		return ret;
+
+	*value = val & AP1302_DZ_TGT_FCT_MASK;
+	return 0;
+}
+
+static const char * const sfx_mode_strings[] = {
+	"Normal Mode", // AP1302_SFX_MODE_SFX_NORMAL
+	"Black and White Mode", // AP1302_SFX_MODE_SFX_BW
+	"Grayscale Mode", // AP1302_SFX_MODE_SFX_GRAYSCALE
+	"Negative Mode", // AP1302_SFX_MODE_SFX_NEGATIVE
+	"Sketch Mode", // AP1302_SFX_MODE_SFX_SKETCH
+	NULL,
+};
+
+static int ops_set_special_effect(struct sensor *instance, s32 mode)
+{
+	u16 val = mode & AP1302_SFX_MODE_SFX_MASK;
+
+	switch(val)
+	{
+	case 0:
+		val = AP1302_SFX_MODE_SFX_NORMAL;
+		break;
+	case 1:
+		val = AP1302_SFX_MODE_SFX_BW;
+		break;
+	case 2:
+		val = AP1302_SFX_MODE_SFX_GRAYSCALE;
+		break;
+	case 3:
+		val = AP1302_SFX_MODE_SFX_NEGATIVE;
+		break;
+	case 4:
+		val = AP1302_SFX_MODE_SFX_SKETCH;
+		break;
+	default:
+		val = AP1302_SFX_MODE_SFX_NORMAL;
+		break;
+	}
+
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_SFX_MODE, val);
+}
+
+static int ops_get_special_effect(struct sensor *instance, s32 *mode)
+{
+	u16 val;
+	int ret;
+
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_SFX_MODE, &val);
+	if (ret)
+		return ret;
+
+	switch (val & AP1302_SFX_MODE_SFX_MASK)
+	{
+	case AP1302_SFX_MODE_SFX_NORMAL:
+		*mode = 0;
+		break;
+	case AP1302_SFX_MODE_SFX_BW:
+		*mode = 1;
+		break;
+	case AP1302_SFX_MODE_SFX_GRAYSCALE:
+		*mode = 2;
+		break;
+	case AP1302_SFX_MODE_SFX_NEGATIVE:
+		*mode = 3;
+		break;
+	case AP1302_SFX_MODE_SFX_SKETCH:
+		*mode = 4;
+		break;
+	default:
+		*mode = 0;
+		break;
+	}
+
+	return 0;
+}
+
+static const char * const ae_mode_strings[] = {
+	"Manual Mode", // AP1302_AE_CTRL_MANUAL_EXP_TIME_GAIN
+	"Auto Mode", // AP1302_AE_CTRL_FULL_AUTO
+	NULL,
+};
+
+static int ops_set_ae_mode(struct sensor *instance, s32 mode)
+{
+	u16 val = mode & AP1302_AE_CTRL_MODE_MASK;
+
+	switch(val)
+	{
+	case 0:
+		val |= AP1302_AE_CTRL_MANUAL_EXP_TIME_GAIN;
+		break;
+	case 1:
+		val |= AP1302_AE_CTRL_FULL_AUTO;
+		break;
+	default:
+		val |= AP1302_AE_CTRL_FULL_AUTO;
+		break;
+	}
+
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_AE_CTRL_MODE, val);
+}
+
+static int ops_get_ae_mode(struct sensor *instance, s32 *mode)
+{
+	u16 val;
+	int ret;
+
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_AE_CTRL_MODE, &val);
+	if (ret)
+		return ret;
+
+	switch (val & AP1302_AE_CTRL_MODE_MASK)
+	{
+	case AP1302_AE_CTRL_MANUAL_EXP_TIME_GAIN:
+		*mode = 0;
+		break;
+	case AP1302_AE_CTRL_FULL_AUTO:
+		*mode = 1;
+		break;
+	default:
+		*mode = 1;
+		break;
+	}
+	return 0;
+}
+
+static const char * const flick_mode_strings[] = {
+	"Disabled", 
+	"50 Hz",
+	"60 Hz",
+	"Auto",
+	NULL,
+};
+
+static int ops_set_flick_mode(struct sensor *instance, s32 mode)
+{
+	u16 val = 0;
+	switch(mode)
+	{
+	case 0:
+		val = AP1302_FLICK_CTRL_MODE_DISABLED;
+		break;
+	case 1:
+		val = AP1302_FLICK_CTRL_MODE_50HZ;
+		break;
+	case 2:
+		val = AP1302_FLICK_CTRL_MODE_60HZ;
+		break;
+	case 3:
+		val = AP1302_FLICK_CTRL_MODE_AUTO | 
+				AP1302_FLICK_CTRL_FRC_OVERRIDE_UPPER_ET | 
+				AP1302_FLICK_CTRL_FRC_EN;
+		break;
+	default:
+		val = AP1302_FLICK_CTRL_MODE_DISABLED;
+		break;
+	}
+
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_FLICK_CTRL, val);
+}
+
+static int ops_get_flick_mode(struct sensor *instance, s32 *mode)
+{
+	u16 val;
+	int ret;
+
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_FLICK_CTRL, &val);
+	if (ret)
+		return ret;
+
+	switch (val & AP1302_FLICK_CTRL_MODE_MASK)
+	{
+	case AP1302_FLICK_CTRL_MODE_DISABLED:
+		*mode = 0;
+		break;
+	case AP1302_FLICK_CTRL_MODE_MANUAL:
+		if((val & AP1302_FLICK_CTRL_FREQ_MASK) == AP1302_FLICK_CTRL_FREQ(50))
+			*mode = 1;
+		else if((val & AP1302_FLICK_CTRL_FREQ_MASK)  == AP1302_FLICK_CTRL_FREQ(50))
+			*mode = 2;
+		break;
+	case AP1302_FLICK_CTRL_MODE_AUTO:
+		*mode = 3;
+		break;
+	default:
+		*mode = 0;
+		break;
+	}
+	return 0;
+}
+
+static int ops_set_pan_target(struct sensor *instance, s32 value)
+{
+	// Format u7.8
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_DZ_CT_X, value & AP1302_DZ_CT_X_MASK);
+}
+
+static int ops_get_pan_target(struct sensor *instance, s32 *value)
+{
+	u16 val;
+	int ret;
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_DZ_CT_X, &val);
+	if (ret)
+		return ret;
+
+	*value = val & AP1302_DZ_CT_X_MASK;
+	return 0;
+}
+
+static int ops_set_tilt_target(struct sensor *instance, s32 value)
+{
+	// Format u7.8
+	return sensor_i2c_write_16b(instance->i2c_client, AP1302_DZ_CT_Y, value & AP1302_DZ_CT_Y_MASK);
+}
+
+static int ops_get_tilt_target(struct sensor *instance, s32 *value)
+{
+	u16 val;
+	int ret;
+	ret = sensor_i2c_read_16b(instance->i2c_client, AP1302_DZ_CT_Y, &val);
+	if (ret)
+		return ret;
+
+	*value = val & AP1302_DZ_CT_Y_MASK;
+	return 0;
+}
+
+static int ops_s_ctrl(struct v4l2_ctrl *ctrl)
+{
+	struct sensor *instance = container_of(ctrl->handler, struct sensor, ctrls);
+
+	switch (ctrl->id)
+	{
+	case V4L2_CID_BRIGHTNESS:
+		return ops_set_brightness(instance, ctrl->val);
+
+	case V4L2_CID_CONTRAST:
+		return ops_set_contrast(instance, ctrl->val);
+
+	case V4L2_CID_SATURATION:
+		return ops_set_saturation(instance, ctrl->val);
+
+	case V4L2_CID_AUTO_WHITE_BALANCE:
+		return ops_set_awb_mode(instance, ctrl->val);
+
+	case V4L2_CID_GAMMA:
+		return ops_set_gamma(instance, ctrl->val);
+
+	case V4L2_CID_EXPOSURE:
+		return ops_set_exposure(instance, ctrl->val);
+
+	case V4L2_CID_GAIN:
+		return ops_set_gain(instance, ctrl->val);
+
+	case V4L2_CID_HFLIP:
+		return ops_set_hflip(instance, ctrl->val);
+
+	case V4L2_CID_VFLIP:
+		return ops_set_vflip(instance, ctrl->val);
+
+	case V4L2_CID_POWER_LINE_FREQUENCY:
+		return ops_set_flick_mode(instance, ctrl->val);
+
+	case V4L2_CID_WHITE_BALANCE_TEMPERATURE:
+		return ops_set_awb_temp(instance, ctrl->val);
+
+	case V4L2_CID_SHARPNESS:
+		return ops_set_sharpen(instance, ctrl->val);
+
+	case V4L2_CID_BACKLIGHT_COMPENSATION:
+		return ops_set_backlight_compensation(instance, ctrl->val);
+
+	case V4L2_CID_COLORFX:
+		return ops_set_special_effect(instance, ctrl->val);
+
+	case V4L2_CID_EXPOSURE_AUTO:
+		return ops_set_ae_mode(instance, ctrl->val);
+
+	case V4L2_CID_PAN_ABSOLUTE:
+		return ops_set_pan_target(instance, ctrl->val);
+
+	case V4L2_CID_TILT_ABSOLUTE:
+		return ops_set_tilt_target(instance, ctrl->val);
+
+	case V4L2_CID_ZOOM_ABSOLUTE:
+		return ops_set_zoom_target(instance, ctrl->val);
+	case V4L2_CID_SENSOR_FLASH_ID:
+		return 0;
+
+	default:
+		dev_dbg(&instance->i2c_client->dev, "Unknown control 0x%x\n",ctrl->id);
+		return -EINVAL;
+	}
+}
+
+static int ops_g_ctrl(struct v4l2_ctrl *ctrl)
+{
+	struct sensor *instance = container_of(ctrl->handler, struct sensor, ctrls);
+
+	switch (ctrl->id)
+	{
+	case V4L2_CID_BRIGHTNESS:
+		return ops_get_brightness(instance, &ctrl->val);
+
+	case V4L2_CID_CONTRAST:
+		return ops_get_contrast(instance, &ctrl->val);
+
+	case V4L2_CID_SATURATION:
+		return ops_get_saturation(instance, &ctrl->val);
+
+	case V4L2_CID_AUTO_WHITE_BALANCE:
+		return ops_get_awb_mode(instance, &ctrl->val);
+
+	case V4L2_CID_GAMMA:
+		return ops_get_gamma(instance, &ctrl->val);
+
+	case V4L2_CID_EXPOSURE:
+		return ops_get_exposure(instance, &ctrl->val);
+
+	case V4L2_CID_GAIN:
+		return ops_get_gain(instance, &ctrl->val);
+
+	case V4L2_CID_HFLIP:
+		return ops_get_hflip(instance, &ctrl->val);
+
+	case V4L2_CID_VFLIP:
+		return ops_get_vflip(instance, &ctrl->val);
+
+	case V4L2_CID_POWER_LINE_FREQUENCY:
+		return ops_get_flick_mode(instance, &ctrl->val);
+
+	case V4L2_CID_WHITE_BALANCE_TEMPERATURE:
+		return ops_get_awb_temp(instance, &ctrl->val);
+
+	case V4L2_CID_SHARPNESS:
+		return ops_get_sharpen(instance, &ctrl->val);
+
+	case V4L2_CID_BACKLIGHT_COMPENSATION:
+		return ops_get_backlight_compensation(instance, &ctrl->val);
+
+	case V4L2_CID_COLORFX:
+		return ops_get_special_effect(instance, &ctrl->val);
+
+	case V4L2_CID_EXPOSURE_AUTO:
+		return ops_get_ae_mode(instance, &ctrl->val);
+
+	case V4L2_CID_PAN_ABSOLUTE:
+		return ops_get_pan_target(instance, &ctrl->val);
+
+	case V4L2_CID_TILT_ABSOLUTE:
+		return ops_get_tilt_target(instance, &ctrl->val);
+
+	case V4L2_CID_ZOOM_ABSOLUTE:
+		return ops_get_zoom_target(instance, &ctrl->val);
+	case V4L2_CID_SENSOR_FLASH_ID:
+		ctrl->val = instance->otp_flash_instance->flash_id;
+		return 0;
+
+	default:
+		dev_dbg(&instance->i2c_client->dev, "Unknown control 0x%x\n",ctrl->id);
+		return -EINVAL;
+	}
+}
+
 static int ops_media_link_setup(struct media_entity *entity,
 				const struct media_pad *local,
 				const struct media_pad *remote, u32 flags)
 {
+	return 0;
+}
+
+static const struct v4l2_ctrl_ops sensor_ctrl_ops = {
+	.s_ctrl = ops_s_ctrl,
+};
+
+static const struct v4l2_ctrl_config ops_ctrls[] = {
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_BRIGHTNESS,
+		.name = "Brightness",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0,
+		.max = 0xFFFF,
+		.step = 0x100,
+		.def = 0x100,
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_CONTRAST,
+		.name = "Contrast",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0,
+		.max = 0xFFFF,
+		.step = 0x100,
+		.def = 0x100,
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_SATURATION,
+		.name = "Saturation",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0,
+		.max = 0xFFFF,
+		.step = 0x100,
+		.def = 0x1000,
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_AUTO_WHITE_BALANCE,
+		.name = "White_Balance_Mode",
+		.type = V4L2_CTRL_TYPE_MENU,
+		.max = AP1302_AWB_CTRL_MODE_AUTO_IDX,
+		.def = AP1302_AWB_CTRL_MODE_AUTO_IDX,
+		.qmenu = awb_mode_strings,
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_GAMMA,
+		.name = "Gamma",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0,
+		.max = 0xFFFF,
+		.step = 0x100,
+		.def = 0x0, // 2.2
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_EXPOSURE,
+		.name = "Exposure",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0,
+		.max = 0xF4240,
+		.step = 1,
+		.def = 0x8235, // 33333 us
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_GAIN,
+		.name = "Gain",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0,
+		.max = 0xFFFF,
+		.step = 0x100,
+		.def = 0x100,
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_HFLIP,
+		.name = "HFlip",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = 0,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_VFLIP,
+		.name = "VFlip",
+		.type = V4L2_CTRL_TYPE_BOOLEAN,
+		.min = 0,
+		.max = 1,
+		.step = 1,
+		.def = 0,
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_POWER_LINE_FREQUENCY,
+		.name = "Power_Line_Frequency",
+		.type = V4L2_CTRL_TYPE_MENU,
+		.max = AP1302_FLICK_MODE_ENABLED_IDX,
+		.def = AP1302_FLICK_MODE_DISABLED_IDX,
+		.qmenu = flick_mode_strings,
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_WHITE_BALANCE_TEMPERATURE,
+		.name = "White_Balance_Temperature",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x8FC,
+		.max = 0x3A98,
+		.step = 0x1,
+		.def = 0x1388,
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_SHARPNESS,
+		.name = "Sharpness",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0,
+		.max = 0xFFFF,
+		.step = 0x100,
+		.def = 0x100,
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_BACKLIGHT_COMPENSATION,
+		.name = "Backlight_Compensation",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0,
+		.max = 0xFFFF,
+		.step = 0x100,
+		.def = 0x100,
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_COLORFX,
+		.name = "Special_Effect",
+		.type = V4L2_CTRL_TYPE_MENU,
+		.max = AP1302_SFX_MODE_SFX_SKETCH_IDX,
+		.def = AP1302_SFX_MODE_SFX_NORMAL_IDX,
+		.qmenu = sfx_mode_strings,
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_EXPOSURE_AUTO,
+		.name = "Exposure_Mode",
+		.type = V4L2_CTRL_TYPE_MENU,
+		.max = AP1302_AE_CTRL_FULL_AUTO_IDX,
+		.def = AP1302_AE_CTRL_FULL_AUTO_IDX,
+		.qmenu = ae_mode_strings,
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_PAN_ABSOLUTE,
+		.name = "Pan_Target",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0,
+		.max = 0x100,
+		.step = 0x1,
+		.def = 0x80,
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_TILT_ABSOLUTE,
+		.name = "Tilt_Target",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0,
+		.max = 0x100,
+		.step = 0x1,
+		.def = 0x80,
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_ZOOM_ABSOLUTE,
+		.name = "Zoom_Target",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x100,
+		.max = 0x800,
+		.step = 0x1,
+		.def = 0x100,
+	},
+	{
+		.ops = &sensor_ctrl_ops,
+		.id = V4L2_CID_SENSOR_FLASH_ID,
+		.name = "Sensor_Flash_ID",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0x0,
+		.max = 0x7F,
+		.step = 0x1,
+		.def = 0x54,
+	},
+};
+
+static int ops_ctrls_init(struct sensor *instance)
+{
+	unsigned int i;
+	int ret;
+
+	ret = v4l2_ctrl_handler_init(&instance->ctrls, ARRAY_SIZE(ops_ctrls));
+	if (ret)
+		return ret;
+
+	for (i = 0; i < ARRAY_SIZE(ops_ctrls); i++)
+	{
+		struct v4l2_ctrl * ctrl = v4l2_ctrl_new_custom(&instance->ctrls,
+								&ops_ctrls[i], NULL);
+		ret = ops_g_ctrl(ctrl);
+		if (!ret && ctrl->default_value != ctrl->val) {
+			// Updating default value based on firmware values
+			dev_dbg(&instance->i2c_client->dev,"Ctrl '%s' default value updated from %lld to %d\n",
+					ctrl->name, ctrl->default_value, ctrl->val);
+			ctrl->default_value = ctrl->val;
+			ctrl->cur.val = ctrl->val;
+		}
+	}
+
+	if (instance->ctrls.error) {
+		dev_err(&instance->i2c_client->dev, "ctrls error\n");
+		ret = instance->ctrls.error;
+		v4l2_ctrl_handler_free(&instance->ctrls);
+		return ret;
+	}
+
+	/* Use same lock for controls as for everything else. */
+	instance->ctrls.lock = &instance->lock;
+	instance->v4l2_subdev.ctrl_handler = &instance->ctrls;
+
 	return 0;
 }
 
@@ -403,41 +1442,6 @@ static const struct v4l2_subdev_ops sensor_subdev_ops = {
 static const struct media_entity_operations sensor_media_entity_ops = {
 	.link_setup = ops_media_link_setup,
 };
-
-static int check_sensor_chip_id(struct i2c_client *client, u16* chip_id)
-{
-	int timeout;
-
-	for (timeout = 0 ; timeout < 100 ; timeout ++) {
-		usleep_range(9000, 10000);
-		sensor_i2c_read_16b(client, 0x60AC, chip_id);
-		if ((*chip_id & 0x7) == 0)
-			break;
-	}
-	if (timeout >= 100) {
-		dev_err(&client->dev, "timeout: line[%d]v=%x\n", __LINE__, *chip_id);
-		return -EINVAL;
-	}
-	sensor_i2c_write_16b(client, 0x60AA, 0x0002); // DMA_SIZE
-	sensor_i2c_write_16b(client, 0x60A0, 0x0320); // DMA_SRC_0
-	sensor_i2c_write_16b(client, 0x60A2, 0x3000); // DMA_SRC_1
-	sensor_i2c_write_16b(client, 0x60A4, 0x0000); // DMA_DST_0
-	sensor_i2c_write_16b(client, 0x60A6, 0x60A4); // DMA_DST_1
-	sensor_i2c_write_16b(client, 0x60AC, 0x0032); // DMA_CTRL
-	for (timeout = 0 ; timeout < 100 ; timeout ++) {
-		usleep_range(9000, 10000);
-		sensor_i2c_read_16b(client, 0x60AC, chip_id);
-		if ((*chip_id & 0x7) == 0)
-			break;
-	}
-	if (timeout >= 100) {
-		dev_err(&client->dev, "timeout: line[%d]v=%x\n", __LINE__, *chip_id);
-		return -EINVAL;
-	}
-	sensor_i2c_read_16b(client, 0x60A4, chip_id);
-
-	return 0;
-}
 
 static int set_standby_mode_rel419(struct i2c_client *client, int enable)
 {
@@ -601,7 +1605,6 @@ static int sensor_power_on(struct sensor *instance)
 {
 	dev_dbg(&instance->i2c_client->dev, "%s()\n", __func__);
 	gpiod_set_value_cansleep(instance->host_power_gpio, 1);
-	gpiod_set_value_cansleep(instance->device_power_gpio, 1);
 	usleep_range(500, 5000);
 	gpiod_set_value_cansleep(instance->reset_gpio, 1);
 	msleep(10);
@@ -612,10 +1615,8 @@ static int sensor_power_on(struct sensor *instance)
 static int sensor_power_off(struct sensor *instance)
 {
 	dev_dbg(&instance->i2c_client->dev, "%s()\n", __func__);
-	gpiod_set_value_cansleep(instance->standby_gpio, 0);
 	gpiod_set_value_cansleep(instance->reset_gpio, 0);
 	usleep_range(50, 500);
-	gpiod_set_value_cansleep(instance->device_power_gpio, 0);
 	gpiod_set_value_cansleep(instance->host_power_gpio, 0);
 	msleep(10);
 
@@ -698,9 +1699,11 @@ static int sensor_probe(struct i2c_client *client, const struct i2c_device_id *i
 {
 	struct sensor *instance = NULL;
 	struct device *dev = &client->dev;
+	// struct device_node *flash_node;
 	struct v4l2_mbus_framefmt *fmt;
 	int data_lanes;
 	int continuous_clock;
+	// int flash_id;
 	int i;
 	int ret;
 	int retry_f;
@@ -722,25 +1725,12 @@ static int sensor_probe(struct i2c_client *client, const struct i2c_device_id *i
 			dev_err(dev, "Cannot get host-power GPIO (%d)", ret);
 		return ret;
 	}
-	instance->device_power_gpio = devm_gpiod_get_optional(dev, "device-power", GPIOD_OUT_LOW);
-	if (IS_ERR(instance->device_power_gpio)) {
-		ret = PTR_ERR(instance->device_power_gpio);
-		if (ret != -EPROBE_DEFER)
-			dev_err(dev, "Cannot get device-power GPIO (%d)", ret);
-		return ret;
-	}
+
 	instance->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
 	if (IS_ERR(instance->reset_gpio)) {
 		ret = PTR_ERR(instance->reset_gpio);
 		if (ret != -EPROBE_DEFER)
 			dev_err(dev, "Cannot get reset GPIO (%d)", ret);
-		return ret;
-	}
-	instance->standby_gpio = devm_gpiod_get_optional(dev, "standby", GPIOD_OUT_LOW);
-	if (IS_ERR(instance->standby_gpio)) {
-		ret = PTR_ERR(instance->standby_gpio);
-		if (ret != -EPROBE_DEFER)
-			dev_err(dev, "Cannot get standby GPIO (%d)", ret);
 		return ret;
 	}
 
@@ -835,7 +1825,14 @@ static int sensor_probe(struct i2c_client *client, const struct i2c_device_id *i
 
 	v4l2_i2c_subdev_init(&instance->v4l2_subdev,
 			     instance->i2c_client, &sensor_subdev_ops);
-	//instance->v4l2_subdev.flags |= V4L2_SUBDEV_FL_HAS_EVENTS;
+	instance->v4l2_subdev.flags |= (V4L2_SUBDEV_FL_HAS_EVENTS | V4L2_SUBDEV_FL_HAS_DEVNODE);
+
+	ret = ops_ctrls_init(instance);
+	if (ret) {
+		dev_err(&client->dev, "failed to init controls: %d", ret);
+		goto error_probe;
+	}
+
 	instance->pad.flags = MEDIA_PAD_FL_SOURCE;
 	instance->v4l2_subdev.entity.ops = &sensor_media_entity_ops;
 	instance->v4l2_subdev.entity.function = MEDIA_ENT_F_CAM_SENSOR;
@@ -869,6 +1866,9 @@ static int sensor_probe(struct i2c_client *client, const struct i2c_device_id *i
 	else
 		dev_err(&client->dev, "probe failed\n");
 
+error_probe:
+	mutex_destroy(&instance->lock);
+
 	return ret;
 }
 
@@ -878,13 +1878,13 @@ static int sensor_remove(struct i2c_client *client)
 }
 
 static const struct i2c_device_id sensor_id[] = {
-	{ "tevi-ap1302", 0 },
+	{ DRIVER_NAME, 0 },
 	{}
 };
 MODULE_DEVICE_TABLE(i2c, sensor_id);
 
 static const struct of_device_id sensor_of[] = {
-	{ .compatible = "tn,tevi-ap1302" },
+	{ .compatible = "tn,"DRIVER_NAME },
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, sensor_of);
@@ -892,7 +1892,7 @@ MODULE_DEVICE_TABLE(of, sensor_of);
 static struct i2c_driver sensor_i2c_driver = {
 	.driver = {
 		.of_match_table = of_match_ptr(sensor_of),
-		.name  = "tevi-ap1302",
+		.name  = DRIVER_NAME,
 	},
 	.probe = sensor_probe,
 	.remove = sensor_remove,
