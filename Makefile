@@ -2,7 +2,7 @@
 VERSION = 5
 PATCHLEVEL = 15
 SUBLEVEL = 71
-EXTRAVERSION = -adv-tn-imx1
+EXTRAVERSION = -adv-tn-imx2
 NAME = Trick or Treat
 
 # *DOCUMENTATION*
